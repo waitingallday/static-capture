@@ -65,8 +65,9 @@ class Capture
       assets << el['href'] unless File.extname(el['href']).empty?
     end
 
-    # <img> relative path with .ext
-    node.css('img[src^="/"]').each do |el|
+    # <img>
+    node.css('img').each do |el|
+      next if el['src'][0..3] == 'http' # Exclude absolute path
       assets << el['src'] unless File.extname(el['src']).empty?
     end
 
