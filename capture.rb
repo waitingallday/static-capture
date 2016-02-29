@@ -25,7 +25,10 @@ class Capture
 
     @current_page = Faraday.get(@current_uri.to_s).body
 
+    buf = "#{@site + loc}index.html"
     output_page(@current_page, loc)
+    print("#{buf}\n")
+
     @sitemap << @current_uri.path
 
     parse_assets
@@ -77,7 +80,11 @@ class Capture
       end
     end
 
-    assets.map { |x| process_asset x }
+    threads = []
+    assets.map do |asset|
+      threads << Thread.new { process_asset(asset) }
+    end
+    threads.each(&:join)
   end
 
   def process_asset(url)
@@ -95,7 +102,7 @@ class Capture
       captured.write Faraday.get(remote).body
     end
 
-    puts remote
+    print("#{remote}\n")
   end
 
   def parse_children
@@ -109,11 +116,13 @@ class Capture
       children << el['href'] if File.extname(el['href']).empty?
     end
 
+    threads = []
     children.map do |child|
       child += '/' unless child[-1] == '/'
       @current_uri = URI(@site + child)
-      capture_page(child)
+      threads << Thread.new { capture_page(child) }
     end
+    threads.each(&:join)
   end
 
   private
@@ -124,7 +133,5 @@ class Capture
     open(File.join(@output_loc, loc, 'index.html'), 'w') do |captured|
       captured.write(content)
     end
-
-    puts "#{@site + loc}index.html"
   end
 end
