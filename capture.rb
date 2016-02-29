@@ -1,3 +1,5 @@
+MAX_THREADS = 8
+
 #
 class Capture
   def initialize(args)
@@ -6,14 +8,25 @@ class Capture
 
     # Force site root for now
     @site = @current_uri.scheme + '://' + @current_uri.host
-    @root = @current_uri = URI(@site)
+    @root = URI(@site)
+    @current_uri = @root
 
     @output_loc = File.join(File.dirname(__FILE__), @current_uri.host)
 
     @sitemap = []
 
-    puts "Capturing from site root #{@site}\n"
-    capture_page('/')
+    @threads = []
+    @semaphore = Queue.new
+    MAX_THREADS.times { @semaphore.push(1) } # Init tokens
+
+    print "Capturing from site root #{@site}\n\n"
+
+    @threads << Thread.new do
+      @semaphore.pop
+      capture_page('/')
+      @semaphore.push(1)
+    end
+    @threads.each(&:join)
   end
 
   def capture_page(loc = '')
@@ -23,13 +36,9 @@ class Capture
     # Check for local file
     return if File.exist? File.join(@output_loc, loc, 'index.html')
 
+    @current_uri = URI(@site + loc)
     @current_page = Faraday.get(@current_uri.to_s).body
-
-    buf = "#{@site + loc}index.html"
     output_page(@current_page, loc)
-    print("#{buf}\n")
-
-    @sitemap << @current_uri.path
 
     parse_assets
     parse_children
@@ -80,29 +89,13 @@ class Capture
       end
     end
 
-    threads = []
     assets.map do |asset|
-      threads << Thread.new { process_asset(asset) }
+      @threads << Thread.new do
+        @semaphore.pop
+        output_asset URI(asset)
+        @semaphore.push(1)
+      end
     end
-    threads.each(&:join)
-  end
-
-  def process_asset(url)
-    asset_uri = URI(url)
-    file = File.join(@output_loc, asset_uri.path)
-    return if File.exist? file
-
-    dirs = asset_uri.path.split('/')
-    dirs.push # drop root /
-    dirs.pop # drop file
-    FileUtils.mkdir_p(File.join(@output_loc, dirs)) if dirs.length > 0
-
-    remote = File.join(@root.to_s, asset_uri.to_s)
-    open(file, 'w') do |captured|
-      captured.write Faraday.get(remote).body
-    end
-
-    print("#{remote}\n")
   end
 
   def parse_children
@@ -111,27 +104,55 @@ class Capture
 
     # <a> relative path without .ext
     node.css('a[href^="/"]').each do |el|
-      next if el['href'][0..1] == '/#' # Exclude anchor
       next if el['href'][0..1] == '//' # Exclude schema-less
+      dirs = el['href'].split('/')
+      next if dirs.length > 1 && dirs.last[0] == '#' # Exclude anchor
       children << el['href'] if File.extname(el['href']).empty?
     end
 
-    threads = []
     children.map do |child|
       child += '/' unless child[-1] == '/'
-      @current_uri = URI(@site + child)
-      threads << Thread.new { capture_page(child) }
+
+      @threads << Thread.new do
+        @semaphore.pop
+        capture_page(child)
+        @semaphore.push(1)
+      end
     end
-    threads.each(&:join)
   end
 
   private
 
+  def output_asset(asset_uri)
+    file = File.join(@output_loc, asset_uri.path)
+    return if (File.exist? file) || (@sitemap.include? file)
+
+    remote = File.join(@root.to_s, asset_uri.to_s)
+
+    dirs = asset_uri.path.split('/')
+    dirs.push # drop root /
+    dirs.pop # drop file
+    FileUtils.mkdir_p(File.join(@output_loc, dirs)) if dirs.length > 0
+
+    open(file, 'w') do |captured|
+      captured.write(Faraday.get(remote).body)
+    end
+
+    @sitemap << file
+    print "#{remote}\n"
+  end
+
   def output_page(content, loc = '')
+    file = File.join(@output_loc, loc, 'index.html')
+    return if (File.exist? file) || (@sitemap.include? file)
+
     FileUtils.mkdir_p(File.join(@output_loc, loc))
 
-    open(File.join(@output_loc, loc, 'index.html'), 'w') do |captured|
+    open(file, 'w') do |captured|
       captured.write(content)
     end
+
+    @sitemap << file
+    print "#{@site + loc}index.html\n"
   end
 end
