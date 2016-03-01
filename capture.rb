@@ -2,95 +2,57 @@ MAX_THREADS = 8
 
 #
 class Capture
+  include Helpers
+  include PageRules
+  include AssetRules
+
   def initialize(args)
-    @opts = args[:opts]
-    @current_uri = URI(@opts[:source])
+    @current_uri = URI(args[:opts][:source])
 
-    # Force site root for now
-    @site = @current_uri.scheme + '://' + @current_uri.host
-    @root = URI(@site)
-    @current_uri = @root
-
-    @output_loc = File.join(File.dirname(__FILE__), @current_uri.host)
-
-    @sitemap = []
-
+    setup_paths
     @threads = []
+    @buffer = []
     @semaphore = Queue.new
     MAX_THREADS.times { @semaphore.push(1) } # Init tokens
 
     print "Capturing from site root #{@site}\n\n"
 
-    @threads << Thread.new do
-      @semaphore.pop
-      capture_page('/')
-      @semaphore.push(1)
-    end
+    capture_page('/')
     @threads.each(&:join)
   end
 
   def capture_page(loc = '')
-    # Guard against dupe
-    return if @sitemap.include? loc
-
-    # Check for local file
-    return if File.exist? File.join(@output_loc, loc, 'index.html')
+    return if (schemaless? loc) || (@sitemap.include? loc)
 
     @current_uri = URI(@site + loc)
-    @current_page = Faraday.get(@current_uri.to_s).body
-    output_page(@current_page, loc)
 
-    parse_assets
-    parse_children
+    content = Faraday.get(@site + @current_uri.path).body
+    write_file(File.join(loc, 'index.html'), content)
+
+    print "#{@site + loc}index.html\n"
+
+    node = Nokogiri::HTML(content)
+    parse_assets(node)
+    parse_children(node)
   end
 
-  # In page parse rules
-  def parse_assets
-    assets = []
-    node = Nokogiri::HTML(@current_page)
+  private
 
-    # <link> relative path with .ext
-    node.css('link[href^="/"]').each do |el|
-      assets << el['href'] unless File.extname(el['href']).empty?
-    end
+  def setup_paths
+    # Force site root for now
+    @site = @current_uri.scheme + '://' + @current_uri.host
+    @root = URI(@site)
+    @current_uri = @root
+    @output_loc = File.join(File.dirname(__FILE__), @current_uri.host)
+    @sitemap = []
+  end
 
-    # <script> relative path with .ext
-    node.css('script[src^="/"]').each do |el|
-      next if el['src'][0..1] == '//' # Exclude schema-less
-      assets << el['src'] unless File.extname(el['src']).empty?
-    end
+  def parse_assets(node)
+    parse_asset_rules(node).each do |asset|
+      next if @sitemap.include? asset
 
-    # <a> relative path with .ext
-    node.css('a[href^="/"]').each do |el|
-      assets << el['href'] unless File.extname(el['href']).empty?
-    end
+      @sitemap << asset
 
-    # <img>
-    node.css('img').each do |el|
-      next if el['src'][0..3] == 'http' # Exclude absolute path
-      assets << el['src'] unless File.extname(el['src']).empty?
-    end
-
-    # <svg> relative path with .ext
-    node.css('image[src^="/"]').each do |el|
-      assets << el['src'] unless File.extname(el['src']).empty?
-      assets << el['xlink:href'] unless File.extname(el['xlink:href']).empty?
-    end
-
-    # style="background:url()"
-    node.css('[style]').each do |el|
-      el[:style].split(';').each do |arg|
-        next unless arg.start_with? 'background'
-
-        arg = arg.match %r{^[background].*\:\s?url\(\/(.*)[\)].*$}
-        if arg
-          next if arg[1][0] == '/'
-          assets << arg[1].strip
-        end
-      end
-    end
-
-    assets.map do |asset|
       @threads << Thread.new do
         @semaphore.pop
         output_asset URI(asset)
@@ -99,61 +61,46 @@ class Capture
     end
   end
 
-  def parse_children
-    children = []
-    node = Nokogiri::HTML(@current_page)
-
+  def parse_children(node)
     # <a> relative path without .ext
-    node.css('a[href^="/"]').each do |el|
-      next if el['href'][0..1] == '//' # Exclude schema-less
-      dirs = el['href'].split('/')
-      next if dirs.length > 1 && dirs.last[0] == '#' # Exclude anchor
-      children << el['href'] if File.extname(el['href']).empty?
-    end
-
-    children.map do |child|
-      child += '/' unless child[-1] == '/'
+    page_anchor(node).each do |page|
+      page = trailing_slash(page)
+      next if (@sitemap.include? page) || page.nil?
 
       @threads << Thread.new do
         @semaphore.pop
-        capture_page(child)
+        capture_page(page)
+        @sitemap << page
         @semaphore.push(1)
       end
     end
   end
 
-  private
-
   def output_asset(asset_uri)
-    file = File.join(@output_loc, asset_uri.path)
-    return if (File.exist? file) || (@sitemap.include? file)
-
     remote = File.join(@root.to_s, asset_uri.to_s)
+    content = Faraday.get(remote).body
 
-    dirs = asset_uri.path.split('/')
-    dirs.push # drop root /
-    dirs.pop # drop file
-    FileUtils.mkdir_p(File.join(@output_loc, dirs)) if dirs.length > 0
+    write_file(asset_uri.path, content)
 
-    open(file, 'w') do |captured|
-      captured.write(Faraday.get(remote).body)
-    end
-
-    @sitemap << file
     print "#{remote}\n"
   end
 
-  def output_page(content, loc = '')
-    file = File.join(@output_loc, loc, 'index.html')
-    return if (File.exist? file) || (@sitemap.include? file)
+  def create_path(asset_uri)
+    dirs = asset_uri.path.split('/')
+    dirs.push # drop root /
+    dirs.pop # drop file
 
-    FileUtils.mkdir_p(File.join(@output_loc, loc))
+    FileUtils.mkdir_p(File.join(@output_loc, dirs)) if dirs.length > 0
+  end
+
+  def write_file(file, content)
+    create_path(URI(@site + file))
+
+    file = File.join(@output_loc, file)
+    next if File.exist? file
 
     open(file, 'w') do |captured|
       captured.write(content)
     end
-
-    @sitemap << file
-    print "#{@site + loc}index.html\n"
   end
 end

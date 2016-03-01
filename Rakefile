@@ -6,6 +6,9 @@ Bundler.require(:default, :development)
 
 Dotenv.load
 
+require_relative './helpers'
+require_relative './asset_rules'
+require_relative './page_rules'
 require_relative './capture'
 
 desc 'Capture site [source="https://web.unimelb.edu.au"]'
