@@ -10,26 +10,27 @@ class Capture
     @current_uri = URI(args[:opts][:source])
 
     setup_paths
-    @threads = []
-    @buffer = []
+
     @semaphore = Queue.new
+    @threads = []
     MAX_THREADS.times { @semaphore.push(1) } # Init tokens
 
     print "Capturing from site root #{@site}\n\n"
 
     capture_page('/')
-    @threads.each(&:join)
+    # @threads.each(&:join)
   end
 
   def capture_page(loc = '')
-    return if (schemaless? loc) || (@sitemap.include? loc)
+    file = File.join(loc, 'index.html')
+    return if (schemaless? loc) ||
+              (@sitemap.include? file) ||
+              (File.exist? file)
 
     @current_uri = URI(@site + loc)
 
     content = Faraday.get(@site + @current_uri.path).body
-    write_file(File.join(loc, 'index.html'), content)
-
-    print "#{@site + loc}index.html\n"
+    write_file(file, content)
 
     node = Nokogiri::HTML(content)
     parse_assets(node)
@@ -37,6 +38,12 @@ class Capture
   end
 
   private
+
+  def setup_q
+    q = Queue.new
+    MAX_THREADS.times { q.push(1) }
+    q
+  end
 
   def setup_paths
     # Force site root for now
@@ -48,32 +55,31 @@ class Capture
   end
 
   def parse_assets(node)
+    threads = []
+    semaphore = setup_q
     parse_asset_rules(node).each do |asset|
-      next if @sitemap.include? asset
-
-      @sitemap << asset
-
-      @threads << Thread.new do
-        @semaphore.pop
+      threads << Thread.new do
+        semaphore.pop
         output_asset URI(asset)
-        @semaphore.push(1)
+        semaphore.push(1)
       end
     end
+    threads.each(&:join)
   end
 
   def parse_children(node)
+    threads = []
+    semaphore = setup_q
+
     # <a> relative path without .ext
     page_anchor(node).each do |page|
-      page = trailing_slash(page)
-      next if (@sitemap.include? page) || page.nil?
-
-      @threads << Thread.new do
-        @semaphore.pop
-        capture_page(page)
-        @sitemap << page
-        @semaphore.push(1)
+      threads << Thread.new do
+        semaphore.pop
+        capture_page(trailing_slash(page))
+        semaphore.push(1)
       end
     end
+    threads.each(&:join)
   end
 
   def output_asset(asset_uri)
@@ -81,11 +87,10 @@ class Capture
     content = Faraday.get(remote).body
 
     write_file(asset_uri.path, content)
-
-    print "#{remote}\n"
   end
 
-  def create_path(asset_uri)
+  def create_path(file)
+    asset_uri = URI(@site + file)
     dirs = asset_uri.path.split('/')
     dirs.push # drop root /
     dirs.pop # drop file
@@ -94,13 +99,18 @@ class Capture
   end
 
   def write_file(file, content)
-    create_path(URI(@site + file))
+    return if @sitemap.include? file
 
-    file = File.join(@output_loc, file)
-    next if File.exist? file
+    create_path(file)
 
-    open(file, 'w') do |captured|
+    f = File.join(@output_loc, file)
+    return if File.exist? f
+
+    open(f, 'w') do |captured|
       captured.write(content)
     end
+
+    @sitemap << file
+    print "#{@site + file}\n"
   end
 end
