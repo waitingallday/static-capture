@@ -1,4 +1,4 @@
-MAX_THREADS = 8
+MAX_THREADS = 4
 
 #
 class Capture
@@ -7,29 +7,23 @@ class Capture
   include AssetRules
 
   def initialize(args)
-    @current_uri = URI(args[:opts][:source])
-
-    setup_paths
-
-    @semaphore = Queue.new
-    @threads = []
-    MAX_THREADS.times { @semaphore.push(1) } # Init tokens
+    setup_paths(URI(args[:opts][:source]))
 
     print "Capturing from site root #{@site}\n\n"
 
     capture_page('/')
-    # @threads.each(&:join)
   end
 
   def capture_page(loc = '')
+    return if loc.nil?
+
     file = File.join(loc, 'index.html')
     return if (schemaless? loc) ||
               (@sitemap.include? file) ||
               (File.exist? file)
 
-    @current_uri = URI(@site + loc)
-
-    content = Faraday.get(@site + @current_uri.path).body
+    current_uri = URI(@site + loc)
+    content = Faraday.get(@site + current_uri.path).body
     write_file(file, content)
 
     node = Nokogiri::HTML(content)
@@ -45,22 +39,23 @@ class Capture
     q
   end
 
-  def setup_paths
+  def setup_paths(current_uri)
     # Force site root for now
-    @site = @current_uri.scheme + '://' + @current_uri.host
+    @site = current_uri.scheme + '://' + current_uri.host
     @root = URI(@site)
-    @current_uri = @root
-    @output_loc = File.join(File.dirname(__FILE__), @current_uri.host)
+    current_uri = @root
+    @output_loc = File.join(File.dirname(__FILE__), current_uri.host)
     @sitemap = []
   end
 
   def parse_assets(node)
     threads = []
     semaphore = setup_q
+
     parse_asset_rules(node).each do |asset|
       threads << Thread.new do
         semaphore.pop
-        output_asset URI(asset)
+        output_asset(URI(asset))
         semaphore.push(1)
       end
     end

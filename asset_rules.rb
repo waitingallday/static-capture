@@ -3,21 +3,14 @@ module AssetRules
   def parse_asset_rules(node)
     assets = []
 
-    assets.concat(
-      asset_link(node)   # <link> relative path with .ext
-    ).concat(
-      asset_script(node) # <script> relative path with .ext
-    ).concat(
-      asset_anchor(node) # <a> relative path with .ext
-    ).concat(
-      asset_img(node)    # <img>
-    ).concat(
-      asset_svg(node)    # <svg> relative path with .ext
-    ).concat(
-      asset_style(node)  # style="background:url()"
-    )
+    assets += asset_link(node)   # <link> relative path with .ext
+    assets += asset_script(node) # <script> relative path with .ext
+    assets += asset_anchor(node) # <a> relative path with .ext
+    assets += asset_img(node)    # <img>
+    assets += asset_svg(node)    # <svg> relative path with .ext
+    assets += asset_style(node)  # style="background:url()"
 
-    assets
+    assets.compact
   end
 
   # <link> relative path with .ext
@@ -27,6 +20,7 @@ module AssetRules
       next if schemaless? el['href']
       assets << el['href'] if extension? el['href']
     end
+
     assets
   end
 
@@ -37,6 +31,7 @@ module AssetRules
       next if schemaless? el['src']
       assets << el['src'] if extension? el['src']
     end
+
     assets
   end
 
@@ -47,6 +42,7 @@ module AssetRules
       next if schemaless? el['href']
       assets << el['href'] if extension? el['href']
     end
+
     assets
   end
 
@@ -57,6 +53,7 @@ module AssetRules
       next if (absolute? el['src']) || (schemaless? el['src'])
       assets << el['src'] if extension? el['src']
     end
+
     assets
   end
 
@@ -67,6 +64,7 @@ module AssetRules
       assets << el['src'] if extension? el['src']
       assets << el['xlink:href'] if extension? el['xlink:href']
     end
+
     assets
   end
 
@@ -74,16 +72,22 @@ module AssetRules
   def asset_style(node)
     assets = []
     node.css('[style]').each do |el|
-      el[:style].split(';').each do |arg|
-        next unless arg.start_with? 'background'
-
-        arg = arg.match %r{^[background].*\:\s?url\(\/(.*)[\)].*$}
-        if arg
-          next if arg[1][0] == '/'
-          assets << arg[1].strip
-        end
+      el[:style].split(';').each do |dir|
+        assets << asset_style_directive(dir)
       end
     end
+
     assets
+  end
+
+  def asset_style_directive(arg)
+    return unless arg.start_with? 'background'
+
+    arg = arg.match %r{^[background].*\:\s?url\(\/(.*)[\)].*$}
+
+    return unless arg
+    return if arg[1][0..1] == '//'
+
+    '/' + arg[1].strip
   end
 end
