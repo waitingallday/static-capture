@@ -106,6 +106,6 @@ class Capture
     end
 
     @sitemap << file
-    print "#{@site + file}\n"
+    print "#{@site + leading_slash(file)}\n"
   end
 end
