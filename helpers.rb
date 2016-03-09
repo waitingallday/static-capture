@@ -18,10 +18,14 @@ module Helpers
   end
 
   def trailing_slash(path)
-    "#{path.chomp('/')}/"
+    return '/' unless path.is_a? String
+    path.insert(-1, '/') unless path[-1] == '/'
+    path
   end
 
   def leading_slash(path)
-    "/#{path.reverse.chomp('/').reverse}"
+    return '/' unless path.is_a? String
+    path.insert(0, '/') unless path[0] == '/'
+    path
   end
 end

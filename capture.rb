@@ -5,6 +5,7 @@ class Capture
   include Helpers
   include PageRules
   include AssetRules
+  include StylesheetRules
 
   def initialize(args)
     setup_paths(URI(args[:opts][:source]))
@@ -82,6 +83,11 @@ class Capture
     content = Faraday.get(remote).body
 
     write_file(asset_uri.path, content)
+
+    return unless File.extname(asset_uri) == 'css'
+
+    # Parse asset content for further assets
+    stylesheet_url(content)
   end
 
   def create_path(file)
