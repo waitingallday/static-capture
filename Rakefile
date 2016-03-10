@@ -6,10 +6,13 @@ Bundler.require(:default, :development)
 
 Dotenv.load
 
-require_relative './helpers'
-require_relative './asset_rules'
-require_relative './page_rules'
-require_relative './capture'
+[
+  './helpers',
+  './asset_rules',
+  './page_rules',
+  './stylesheet_rules',
+  './capture'
+].each { |lib| require_relative lib }
 
 desc 'Capture site [source="https://web.unimelb.edu.au"]'
 task 'capture' do
