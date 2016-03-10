@@ -83,10 +83,10 @@ module AssetRules
   def asset_style_directive(arg)
     return unless arg.start_with? 'background'
 
-    arg = arg.match %r{^[background].*\:\s?url\(\/(.*)[\)].*$}
+    arg = arg.match %r{^(?:[background].*\:\s?url\(\s*["']?\/)([^'"#?]+)(?:["']?\s*\))}
 
     return unless arg
-    return if arg[1][0..1] == '//'
+    return if arg[1][0] == '/'
 
     '/' + arg[1].strip
   end
