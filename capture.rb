@@ -138,7 +138,7 @@ class Capture
     return true if @sitemap.include? file
 
     f = File.join(@output_loc, file)
-    return false if File.exist? f
+    return false unless File.exist? f
 
     @sitemap << file
     true
