@@ -60,9 +60,11 @@ module AssetRules
   # <svg> relative path with .ext
   def asset_svg(node)
     assets = []
-    node.css('image[src^="/"]').each do |el|
-      assets << el['src'] if extension? el['src']
-      assets << el['xlink:href'] if extension? el['xlink:href']
+    node.css('image').each do |el|
+      assets << el['src'] if el.attr('src') && extension?(el.attr('src'))
+      if el.attr('xlink:href') && extension?(el.attr('xlink:href'))
+        assets << el['xlink:href']
+      end
     end
 
     assets
@@ -83,7 +85,8 @@ module AssetRules
   def asset_style_directive(arg)
     return unless arg.start_with? 'background'
 
-    arg = arg.match %r{^(?:[background].*\:\s?url\(\s*["']?\/)([^'"#?]+)(?:["']?\s*\))}
+    regex = %r{^(?:[background].*\:\s?url\(\s*["']?\/)([^'"#?]+)(?:["']?\s*\))}
+    arg = arg.match(regex)
 
     return unless arg
     return if arg[1][0] == '/'

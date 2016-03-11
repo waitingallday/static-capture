@@ -51,6 +51,7 @@ module StylesheetRules
     arg = arg.split('url')
     arg.shift
 
-    regex_url(arg, %r{(?:\(\s*["']?\/)([^"'?#]+)(?:[\?#]?[^"']*["']?\s*\))(?:;?)})
+    regex = %r{(?:\(\s*["']?\/)([^"'?#]+)(?:[\?#]?[^"']*["']?\s*\))(?:;?)}
+    regex_url(arg, regex)
   end
 end

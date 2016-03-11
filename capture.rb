@@ -71,7 +71,7 @@ class Capture
     semaphore = setup_q
 
     stylesheet_rules(content).each do |asset|
-      asset_uri = URI('/'+asset)
+      asset_uri = URI('/' + asset)
       next if file_exists(asset_uri.path)
       threads << Thread.new do
         semaphore.pop
@@ -118,7 +118,7 @@ class Capture
     dirs.shift # drop root /
     dirs.pop # drop file
 
-    FileUtils.mkdir_p(File.join(@output_loc, dirs)) if dirs.length > 0
+    FileUtils.mkdir_p(File.join(@output_loc, dirs)) unless dirs.empty?
   end
 
   def write_file(file, content)
@@ -138,12 +138,9 @@ class Capture
     return true if @sitemap.include? file
 
     f = File.join(@output_loc, file)
-    if File.exist? f
-      # print "#{@site + leading_slash(file)} [exists]\n"
-      @sitemap << file
-      return true
-    else
-      return false
-    end
+    return false if File.exist? f
+
+    @sitemap << file
+    true
   end
 end
