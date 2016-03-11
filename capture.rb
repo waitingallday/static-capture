@@ -1,4 +1,5 @@
 MAX_THREADS = 4
+Thread.abort_on_exception = true
 
 #
 class Capture

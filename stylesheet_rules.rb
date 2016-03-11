@@ -22,7 +22,7 @@ module StylesheetRules
   def stylesheet_url_declaration(dec, val)
     assets = []
 
-    if ['background-image', 'background'].include? dec
+    if ['background-image', 'background', 'content'].include? dec
       return unless val.start_with? 'url'
       assets += un_url(val)
     end
@@ -37,6 +37,7 @@ module StylesheetRules
 
     arr.each do |res|
       t = res.match regex
+      puts t.inspect
       matches << t[1] unless t.nil?
     end
 
@@ -44,14 +45,13 @@ module StylesheetRules
   end
 
   def un_url(arg)
-    regex_url([arg], %r{^(?:url\(\s*["']?\/)([^'"#?]+)(?:["']?\s*\))})
+    regex_url([arg], background_url_regex)
   end
 
   def un_fontface_url(arg)
     arg = arg.split('url')
     arg.shift
 
-    regex = %r{(?:\(\s*["']?\/)([^"'?#]+)(?:[\?#]?[^"']*["']?\s*\))(?:;?)}
-    regex_url(arg, regex)
+    regex_url(arg, fontface_src_regex)
   end
 end

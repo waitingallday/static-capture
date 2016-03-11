@@ -28,4 +28,12 @@ module Helpers
     path.insert(0, '/') unless path[0] == '/'
     path
   end
+
+  def background_url_regex
+    %r{^(?:url\(\s*["']?[.]*\/)([^'"#?]+)(?:["']?\s*\))}
+  end
+
+  def fontface_src_regex
+    %r{(?:\(\s*["']?[.]*\/)([^"'?#]+)(?:[\?#]?[^"']*["']?\s*\))(?:;?)}
+  end
 end
