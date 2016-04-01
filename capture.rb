@@ -44,6 +44,7 @@ class Capture
   def setup_paths(current_uri)
     # Force site root for now
     @site = current_uri.scheme + '://' + current_uri.host
+    @site += ':' + current_uri.port.to_s if current_uri.port != 80
     @root = URI(@site)
     current_uri = @root
     @output_loc = File.join(File.dirname(__FILE__), current_uri.host)
